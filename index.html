@@ -118,6 +118,10 @@ html,body{margin:0}
 .views{display:grid;grid-template-columns:1fr 1fr;gap:4px;background:var(--surface);border:1px solid var(--line);border-radius:999px;padding:4px}
 .views button{appearance:none;border:0;background:transparent;color:var(--muted);font:600 14px var(--body);padding:8px 10px;border-radius:999px;cursor:pointer}
 .views button[aria-pressed="true"]{background:var(--ink);color:var(--surface)}
+@media (max-width:420px){.views button{font-size:12.5px;padding:8px 2px}}
+.tnav{display:flex;flex-wrap:wrap;gap:6px;margin:4px 0 6px}
+.tnav a{font:600 13px var(--body);padding:6px 12px;border:1px solid var(--line);border-radius:999px;color:var(--ink);text-decoration:none;background:var(--surface)}
+.tempty{font-size:14px;color:var(--muted);margin:4px 0 10px}
 .send{display:grid;gap:8px;margin-top:16px;background:var(--surface);border:1px solid var(--line);border-radius:16px;padding:14px}
 .send .row{display:flex;gap:8px;flex-wrap:wrap}
 .send button{appearance:none;border:0;background:var(--accent);color:var(--surface);font:600 14px var(--body);border-radius:999px;padding:10px 16px;cursor:pointer}
@@ -147,7 +151,7 @@ html,body{margin:0}
       <div><h1>Тренировки</h1><p id="subtitle">План дня по часам · нажмите пункт, чтобы увидеть упражнения</p></div>
       <label class="wake" for="wake" id="wakebox">Подъём <input id="wake" type="time" value="07:30" step="300"></label>
     </div>
-    <div class="views" role="group" aria-label="Режим" style="grid-template-columns:1fr 1fr 1fr"><button type="button" id="v-day" aria-pressed="true">По дням</button><button type="button" id="v-all" aria-pressed="false">Упражнения</button><button type="button" id="v-stat" aria-pressed="false">Статистика</button></div>
+    <div class="views" role="group" aria-label="Режим" style="grid-template-columns:repeat(4,auto)"><button type="button" id="v-day" aria-pressed="true">По дням</button><button type="button" id="v-all" aria-pressed="false">Упражнения</button><button type="button" id="v-tch" aria-pressed="false">Занятия</button><button type="button" id="v-stat" aria-pressed="false">Статистика</button></div>
     <nav class="week" id="week" aria-label="День недели"></nav>
     <div class="rules" aria-label="Правила на каждый день">
       <span class="rule">Боль не выше 2 из 10</span>
@@ -184,6 +188,10 @@ html,body{margin:0}
 
   <section id="allview" hidden>
     <div class="cat" id="cat"></div>
+  </section>
+
+  <section id="tchview" hidden>
+    <div class="cat" id="tch"></div>
   </section>
 
   <section id="statview" hidden>
@@ -502,6 +510,7 @@ function classItem(c,m,extra){return Object.assign({m:m,kind:'class',cls:c,title
 // ---------- user-added activities ----------
 var ACT={
  pilates:{n:'Пилатес',cl:'pilates'},spine:{n:'Здоровая спина',cl:'spine'},recovery:{n:'Восстановление тела',cl:'recovery'},women:{n:'Женское здоровье',cl:'women'},mobility:{n:'Мобильность суставов',cl:'mobility'},
+ homepil:{n:'Пилатес с блоком дома',sub:'по записи занятия, 10 упражнений',kind:'home',dur:'25–30 мин',ex:'P',lead:'Через 2 часа после еды. Медленно, на выдохе, боль не выше 2 из 10.'},
  lfk:{n:'ЛФК',sub:'с инструктором',lead:'Покажите инструктору свои ограничения: без осевой нагрузки, скручиваний с весом и запрокидывания головы. Боль не выше 2 из 10.'},
  pool:{n:'Бассейн',sub:'45–60 мин',kind:'walk',lead:'На спине или кролем. Брасс с поднятой над водой головой не плавать — нагружает шею и поясницу.'},
  aqua:{n:'Аквааэробика',sub:'45 мин',kind:'walk',lead:'Без прыжков и резких скручиваний; шея в линии со спиной.'},
@@ -519,6 +528,7 @@ function itemsFor(d){
   extras(key).forEach(function(x,i){
     var a=ACT[x.k];if(!a)return;
     var o=a.cl?classItem(a.cl,x.m,{}):{m:x.m,kind:a.kind||'class',title:a.n,sub:a.sub||'',lead:a.lead,tag:'занятие'};
+    if(a.ex){o.ex=CMPLX[a.ex];o.dur=a.dur;delete o.tag;}
     o.extra=i;o.title=a.n;
     if(a.cl)o.pre=o.m>=1140?'Ужин до '+hm(o.m-120)+': заниматься через 2 часа после еды (рефлюкс).':'Последняя еда за 2 часа до занятия (рефлюкс).';
     it.push(o);
@@ -693,7 +703,7 @@ function tick(ts){
   requestAnimationFrame(tick);
 }
 // ---------- catalog: all exercises ----------
-var CNAME=[['BED','Утро в кровати'],['JW','Разминка суставов · каждый день'],['M3','Тройка Макгилла · каждый день'],['T1','Грудной отдел · понедельник'],['T3','Грудной отдел · среда'],['T5','Грудной отдел · пятница'],['A','Комплекс А · стабилизация корпуса'],['D','Комплекс Д · глубокий пресс (по шагам, от простого к сложному)'],['P','Пилатес с блоком дома · 45–50 мин (по занятию 10.11)'],['B','Комплекс Б · мобильность груди'],['V1','Силовая 1'],['V2','Силовая 2'],['G','Комплекс Г · стопа и икры'],['E','Комплекс Е · лимфодренаж'],['ZH','Комплекс Ж · релиз мячом']];
+var CNAME=[['BED','Утро в кровати'],['JW','Разминка суставов · каждый день'],['M3','Тройка Макгилла · каждый день'],['T1','Грудной отдел · понедельник'],['T3','Грудной отдел · среда'],['T5','Грудной отдел · пятница'],['A','Комплекс А · стабилизация корпуса'],['D','Комплекс Д · глубокий пресс (по шагам, от простого к сложному)'],['B','Комплекс Б · мобильность груди'],['V1','Силовая 1'],['V2','Силовая 2'],['G','Комплекс Г · стопа и икры'],['E','Комплекс Е · лимфодренаж'],['ZH','Комплекс Ж · релиз мячом']];
 function renderCat(){
   var cat=document.getElementById('cat');if(cat.dataset.done)return;cat.dataset.done='1';uid=0;
   var s='<h2>Домашние комплексы</h2>';
@@ -701,15 +711,35 @@ function renderCat(){
     var ids=CMPLX[c[0]];
     s+='<details class="card" data-kind="home"><summary><span class="sum-main"><b>'+esc(c[1])+'</b><span><span class="tag">'+ids.length+' упр.</span>'+ids.map(function(i){return esc(EX[i].n.replace(/^[А-ЯA-Z]\d? · /,''));}).join(', ')+'</span></span>'+CHEV+'</summary><div class="body">'+ids.map(exHTML).join('')+'</div></details>';
   });
-  s+='<h2>Занятия в студии: что заменить</h2>';
-  Object.keys(CL).forEach(function(k){
-    var c=CL[k];
-    s+='<details class="card" data-kind="class"><summary><span class="sum-main"><b>'+esc(c.n)+'</b><span><span class="tag">занятие</span>'+c.sw.length+' замены</span></span>'+CHEV+'</summary><div class="body">'+
+  s+='<p class="tempty">Комплексы преподавателей и замены на студийных занятиях — во вкладке «Занятия».</p>';
+  cat.innerHTML=s;paintStatic(cat);
+  if(io)[].forEach.call(cat.querySelectorAll('svg.fig'),function(f){if(!f.__obs){f.__obs=1;io.observe(f);}});
+}
+// ---------- teachers' complexes by class type ----------
+var TCH=[
+ ['pilates',[['P','Пилатес с блоком дома · 45–50 мин (по занятию 10.11)']]],
+ ['women',[]],
+ ['spine',[]],
+ ['recovery',[]],
+ ['mobility',[]]
+];
+function renderTch(){
+  var box=document.getElementById('tch');if(box.dataset.done)return;box.dataset.done='1';
+  var s='<div class="tnav">'+TCH.map(function(t){return '<a href="#t-'+t[0]+'">'+esc(CL[t[0]].n)+'</a>';}).join('')+'</div>';
+  TCH.forEach(function(t){
+    var c=CL[t[0]];
+    s+='<h2 id="t-'+t[0]+'">'+esc(c.n)+'</h2>';
+    if(t[1].length)t[1].forEach(function(x){
+      var ids=CMPLX[x[0]];
+      s+='<details class="card" data-kind="home"><summary><span class="sum-main"><b>'+esc(x[1])+'</b><span><span class="tag">'+ids.length+' упр.</span>'+ids.map(function(i){return esc(EX[i].n.replace(/^[А-ЯA-Z]\d{0,2} · /,''));}).join(', ')+'</span></span>'+CHEV+'</summary><div class="body">'+ids.map(exHTML).join('')+'</div></details>';
+    });
+    else s+='<p class="tempty">Комплекса преподавателя пока нет. Запишите занятие на диктофон и пришлите — сделаю домашнюю версию.</p>';
+    s+='<details class="card" data-kind="class"><summary><span class="sum-main"><b>На занятии в студии: что заменить</b><span><span class="tag">занятие</span>'+c.sw.length+' замены</span></span>'+CHEV+'</summary><div class="body">'+
       '<div class="say"><span class="lbl">Сказать инструктору</span><p>'+esc(c.say)+'</p></div>'+
       '<div class="swap">'+c.sw.map(function(r){return '<div class="swap-row"><span class="no">'+esc(r[0])+'</span><span class="yes">'+esc(r[1])+'</span></div>';}).join('')+'</div></div></details>';
   });
-  cat.innerHTML=s;paintStatic(cat);
-  if(io)[].forEach.call(cat.querySelectorAll('svg.fig'),function(f){if(!f.__obs){f.__obs=1;io.observe(f);}});
+  box.innerHTML=s;paintStatic(box);
+  if(io)[].forEach.call(box.querySelectorAll('svg.fig'),function(f){if(!f.__obs){f.__obs=1;io.observe(f);}});
 }
 // ---------- statistics from marks on this phone ----------
 function cat(it){
@@ -766,16 +796,17 @@ function renderStat(){
 }
 function setView(v){
   if(v===true)v='all';if(v===false)v='day';
-  document.getElementById('dayview').hidden=v!=='day';document.getElementById('allview').hidden=v!=='all';document.getElementById('statview').hidden=v!=='stat';
+  document.getElementById('dayview').hidden=v!=='day';document.getElementById('allview').hidden=v!=='all';document.getElementById('statview').hidden=v!=='stat';document.getElementById('tchview').hidden=v!=='tch';
   weekEl.hidden=v!=='day';document.getElementById('wakebox').hidden=v!=='day';
-  ['day','all','stat'].forEach(function(x){document.getElementById('v-'+x).setAttribute('aria-pressed',String(x===v));});
-  document.getElementById('subtitle').textContent=v==='all'?'Все упражнения и замены на занятиях · нажмите, чтобы раскрыть':v==='stat'?'Как я справляюсь с планом':'План дня по часам · нажмите пункт, чтобы увидеть упражнения';
-  if(v==='all')renderCat();if(v==='stat')renderStat();
+  ['day','all','tch','stat'].forEach(function(x){document.getElementById('v-'+x).setAttribute('aria-pressed',String(x===v));});
+  document.getElementById('subtitle').textContent=v==='all'?'Домашние комплексы · нажмите, чтобы раскрыть':v==='tch'?'Комплексы преподавателей по видам занятий':v==='stat'?'Как я справляюсь с планом':'План дня по часам · нажмите пункт, чтобы увидеть упражнения';
+  if(v==='all')renderCat();if(v==='tch')renderTch();if(v==='stat')renderStat();
   set('tr-view',v);window.scrollTo({top:0});
 }
 document.getElementById('v-day').addEventListener('click',function(){setView('day');});
 document.getElementById('v-all').addEventListener('click',function(){setView('all');});
 document.getElementById('v-stat').addEventListener('click',function(){setView('stat');});
+document.getElementById('v-tch').addEventListener('click',function(){setView('tch');});
 
 // ---------- add activity ----------
 var addSel=document.getElementById('addkind');
@@ -822,7 +853,7 @@ document.getElementById('copy').addEventListener('click',function(){
 
 render();
 if(io)[].forEach.call(document.querySelectorAll('svg.fig'),function(s){s.__obs=1;io.observe(s);});
-(function(){var v=get('tr-view','day');if(v==='all'||v==='stat')setView(v);})();
+(function(){var v=get('tr-view','day');if(v==='all'||v==='stat'||v==='tch')setView(v);})();
 requestAnimationFrame(tick);
 })();
 </script>
