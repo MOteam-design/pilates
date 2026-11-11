@@ -124,6 +124,19 @@ html,body{margin:0}
 .send button.ghost{background:transparent;color:var(--accent);border:1px solid var(--line)}
 .send p{margin:0;font-size:13px;color:var(--muted)}
 .cat{display:grid;gap:10px;margin-top:14px}
+.kpis{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:8px}
+.kpi{background:var(--surface);border:1px solid var(--line);border-radius:14px;padding:12px;display:grid;gap:2px}
+.kpi b{font:600 22px/1.1 var(--display);font-variant-numeric:tabular-nums}
+.kpi span{font-size:12px;color:var(--muted)}
+.bars{display:grid;gap:8px;background:var(--surface);border:1px solid var(--line);border-radius:16px;padding:14px}
+.bar{display:grid;grid-template-columns:88px 1fr 44px;gap:8px;align-items:center;font-size:13px}
+.bar .tr{height:10px;background:var(--line);border-radius:6px;overflow:hidden}
+.bar .tr i{display:block;height:100%;background:var(--accent);border-radius:6px}
+.bar .v{text-align:right;font-variant-numeric:tabular-nums;font-weight:600}
+.cal{display:grid;grid-template-columns:repeat(7,1fr);gap:4px;background:var(--surface);border:1px solid var(--line);border-radius:16px;padding:12px}
+.cal span{aspect-ratio:1;border-radius:6px;background:var(--line);display:grid;place-items:center;font-size:11px;color:var(--ink);font-variant-numeric:tabular-nums}
+.cal .h{background:none;color:var(--muted);aspect-ratio:auto}
+.delx{justify-self:start;appearance:none;background:none;border:1px solid var(--line);color:var(--muted);border-radius:999px;padding:5px 12px;font:500 13px var(--body);cursor:pointer}
 .cat h2{font:600 17px/1.2 var(--display);margin:10px 2px 0}
 </style>
 </head><body>
@@ -134,7 +147,7 @@ html,body{margin:0}
       <div><h1>Тренировки</h1><p id="subtitle">План дня по часам · нажмите пункт, чтобы увидеть упражнения</p></div>
       <label class="wake" for="wake" id="wakebox">Подъём <input id="wake" type="time" value="07:30" step="300"></label>
     </div>
-    <div class="views" role="group" aria-label="Режим"><button type="button" id="v-day" aria-pressed="true">По дням</button><button type="button" id="v-all" aria-pressed="false">Все упражнения</button></div>
+    <div class="views" role="group" aria-label="Режим" style="grid-template-columns:1fr 1fr 1fr"><button type="button" id="v-day" aria-pressed="true">По дням</button><button type="button" id="v-all" aria-pressed="false">Упражнения</button><button type="button" id="v-stat" aria-pressed="false">Статистика</button></div>
     <nav class="week" id="week" aria-label="День недели"></nav>
     <div class="rules" aria-label="Правила на каждый день">
       <span class="rule">Боль не выше 2 из 10</span>
@@ -151,6 +164,17 @@ html,body{margin:0}
   <main class="tl" id="tl"></main>
 
   <div class="send">
+    <b>Добавить занятие в этот день</b>
+    <p>Например, решили в четверг в 18:00 сходить на «Восстановление тела». Добавится только в выбранный день.</p>
+    <div class="row">
+      <select id="addkind" aria-label="Что добавить" style="font:15px var(--body);padding:9px 10px;border-radius:12px;border:1px solid var(--line);background:var(--surface);color:var(--ink);flex:1;min-width:0"></select>
+      <input id="addtime" type="time" value="18:00" step="900" aria-label="Время" style="font:600 15px var(--body);padding:8px 10px;border-radius:12px;border:1px solid var(--line);background:var(--surface);color:var(--ink)">
+      <button type="button" id="addbtn">Добавить</button>
+    </div>
+    <p id="addstatus" role="status"></p>
+  </div>
+
+  <div class="send">
     <b>Отчёт за неделю</b>
     <p>Соберёт, что сделано и что нет с понедельника по сегодня, и откроет чат с помощником в Telegram. Там нажмите «Отправить».</p>
     <div class="row"><button type="button" id="send">Отправить Claude</button><button type="button" class="ghost" id="copy">Скопировать текст</button></div>
@@ -160,6 +184,10 @@ html,body{margin:0}
 
   <section id="allview" hidden>
     <div class="cat" id="cat"></div>
+  </section>
+
+  <section id="statview" hidden>
+    <div class="cat" id="stat"></div>
   </section>
 
   <div class="foot">
@@ -471,6 +499,33 @@ var CHOICE={
  3:[{id:'p12',lbl:'12:00 Пилатес',cls:'pilates',m:720},{id:'w20',lbl:'20:00 Женское здоровье',cls:'women',m:1200}]
 };
 function classItem(c,m,extra){return Object.assign({m:m,kind:'class',cls:c,title:CL[c].n,sub:CL[c].place+' · 1 час',tag:'занятие'},extra||{});}
+// ---------- user-added activities ----------
+var ACT={
+ pilates:{n:'Пилатес',cl:'pilates'},spine:{n:'Здоровая спина',cl:'spine'},recovery:{n:'Восстановление тела',cl:'recovery'},women:{n:'Женское здоровье',cl:'women'},mobility:{n:'Мобильность суставов',cl:'mobility'},
+ lfk:{n:'ЛФК',sub:'с инструктором',lead:'Покажите инструктору свои ограничения: без осевой нагрузки, скручиваний с весом и запрокидывания головы. Боль не выше 2 из 10.'},
+ pool:{n:'Бассейн',sub:'45–60 мин',kind:'walk',lead:'На спине или кролем. Брасс с поднятой над водой головой не плавать — нагружает шею и поясницу.'},
+ aqua:{n:'Аквааэробика',sub:'45 мин',kind:'walk',lead:'Без прыжков и резких скручиваний; шея в линии со спиной.'},
+ massage:{n:'Массаж',sub:'специалист',kind:'rest',lead:'Попросить: без «хруста» и манипуляций на шее, без сильного давления на позвоночник. После — 10 минут спокойно, вставать медленно.'},
+ bath:{n:'Баня',sub:'осторожно',kind:'rest',lead:'Давление низкое: заходы короткие (5–8 мин), без резкого холодного обливания, вставать медленно, пить воду. При головокружении — выйти и лечь.'},
+ osteo:{n:'Остеопат',sub:'приём',kind:'rest',lead:'Сказать: только мягкие техники, без толчков и «хруста» на шее и грудном отделе.'},
+ bike:{n:'Велотренажёр',sub:'20–40 мин',kind:'walk',lead:'Седло такой высоты, чтобы колено внизу было почти прямым; спина ровная, без сильного наклона вперёд. Ровный темп, можно разговаривать.'},
+ dance:{n:'Танцы',sub:'занятие',kind:'walk',lead:'Без прыжков, резких скручиваний и прогибов с запрокидыванием головы. Боль не выше 2 из 10.'}
+};
+function extras(key){try{return JSON.parse(get('tr-extra-'+key,'[]'))||[];}catch(e){return [];}}
+function dayItems(dow){return itemsFor(dateOf(dow));}
+function itemsFor(d){
+  var dow=d.getDay(),key=iso(d),choice=get('tr-choice-'+dow,CHOICE[dow]?CHOICE[dow][0].id:'');
+  var it=plan(dow,wakeMin(),choice);
+  extras(key).forEach(function(x,i){
+    var a=ACT[x.k];if(!a)return;
+    var o=a.cl?classItem(a.cl,x.m,{}):{m:x.m,kind:a.kind||'class',title:a.n,sub:a.sub||'',lead:a.lead,tag:'занятие'};
+    o.extra=i;o.title=a.n;
+    if(a.cl)o.pre=o.m>=1140?'Ужин до '+hm(o.m-120)+': заниматься через 2 часа после еды (рефлюкс).':'Последняя еда за 2 часа до занятия (рефлюкс).';
+    it.push(o);
+  });
+  it.sort(function(a,b){return a.m-b.m;});
+  return it;
+}
 function plan(dow,wake,choice){
   var it=[],W=wake,eve=0;
   it.push({m:W,kind:'home',title:'В кровати',sub:'дыхание, колено к груди, стопа до первых шагов',dur:'4 мин',ex:CMPLX.BED});
@@ -483,7 +538,6 @@ function plan(dow,wake,choice){
   var cls=[];
   if(CHOICE[dow]){var ch=CHOICE[dow].filter(function(o){return o.id===choice;})[0]||CHOICE[dow][0];cls.push(classItem(ch.cls,ch.m,{choice:dow}));}
   if(dow===2){cls.push(classItem('pilates',780));}
-  if(dow===4){cls.push(classItem('recovery',1080));}
   if(dow===6){cls.push(classItem('mobility',660));cls.push(classItem('women',750));}
   cls.forEach(function(c){
     if(c.m>=1080)eve=c.m;
@@ -571,7 +625,7 @@ function render(){
   var d=dateOf(sel),key=iso(d);
   document.getElementById('dayname').textContent=DN[sel]+(sel===todayDow?', сегодня':'');
   var choice=get('tr-choice-'+sel,CHOICE[sel]?CHOICE[sel][0].id:'');
-  var items=plan(sel,wakeMin(),choice);
+  var items=dayItems(sel);
   var tl=document.getElementById('tl');uid=0;
   var html='',done=0;
   items.forEach(function(it,i){
@@ -586,7 +640,8 @@ function render(){
     html+='<div class="body">';
     if(it.lead)html+='<p class="lead">'+esc(it.lead)+'</p>';
     if(it.note)html+='<p class="note">'+it.note+'</p>';
-    if(it.kind==='class')html+=classHTML(it);
+    if(it.kind==='class'&&it.cls)html+=classHTML(it);
+    if(it.extra!==undefined)html+='<button type="button" class="delx" data-delx="'+it.extra+'">Убрать из этого дня</button>';
     if(it.ex)html+=it.ex.map(exHTML).join('');
     html+='</div></details></div>';
   });
@@ -599,6 +654,7 @@ function render(){
 document.getElementById('tl').addEventListener('click',function(e){
   var t=e.target;
   if(t.matches('.check')){e.stopPropagation();return;}
+  if(t.dataset.delx!==undefined){var k=iso(dateOf(sel)),xs=extras(k);xs.splice(+t.dataset.delx,1);set('tr-extra-'+k,JSON.stringify(xs));render();return;}
   if(t.dataset.choose){set('tr-choice-'+sel,t.dataset.choose);render();var c=document.querySelector('details[data-kind="class"]');if(c){c.open=true;}return;}
   if(t.dataset.copy!==undefined){var txt=t.dataset.copy;var ok=function(){t.textContent='Скопировано';};
     try{navigator.clipboard.writeText(txt).then(ok,function(){selectText(t.previousElementSibling);});}catch(err){selectText(t.previousElementSibling);}return;}
@@ -655,26 +711,92 @@ function renderCat(){
   cat.innerHTML=s;paintStatic(cat);
   if(io)[].forEach.call(cat.querySelectorAll('svg.fig'),function(f){if(!f.__obs){f.__obs=1;io.observe(f);}});
 }
-function setView(all){
-  document.getElementById('dayview').hidden=all;document.getElementById('allview').hidden=!all;
-  weekEl.hidden=all;document.getElementById('wakebox').hidden=all;
-  document.getElementById('v-day').setAttribute('aria-pressed',String(!all));document.getElementById('v-all').setAttribute('aria-pressed',String(all));
-  document.getElementById('subtitle').textContent=all?'Все упражнения и замены на занятиях · нажмите, чтобы раскрыть':'План дня по часам · нажмите пункт, чтобы увидеть упражнения';
-  if(all)renderCat();
-  set('tr-view',all?'all':'day');window.scrollTo({top:0});
+// ---------- statistics from marks on this phone ----------
+function cat(it){
+  var t=it.title;
+  if(/Разминка суставов|Макгилла/.test(t))return 'Утро: разминка и Макгилл';
+  if(/грудного/.test(t))return 'Грудной отдел';
+  if(it.kind==='class'||it.extra!==undefined)return 'Занятия';
+  if(it.kind==='walk')return 'Ходьба';
+  if(/Силовая/.test(t))return 'Силовая';
+  return 'Остальное дома';
 }
-document.getElementById('v-day').addEventListener('click',function(){setView(false);});
-document.getElementById('v-all').addEventListener('click',function(){setView(true);});
+function dayStat(d){
+  var key=iso(d),items=itemsFor(d),tot=0,dn=0,by={};
+  items.forEach(function(it){
+    if(it.kind==='rest'&&it.extra===undefined)return;
+    var id=key+'-'+it.m+'-'+it.title.replace(/\s+/g,''),ok=get('tr-done-'+id,'')==='1',c=cat(it);
+    tot++;if(ok)dn++;by[c]=by[c]||[0,0];by[c][1]++;if(ok)by[c][0]++;
+  });
+  return {tot:tot,dn:dn,by:by};
+}
+function firstUse(){
+  var min=null;try{for(var i=0;i<localStorage.length;i++){var k=localStorage.key(i),m=/^tr-done-(\d{4}-\d\d-\d\d)/.exec(k);if(m&&localStorage.getItem(k)==='1'&&(!min||m[1]<min))min=m[1];}}catch(e){}
+  return min;
+}
+function pct(a,b){return b?Math.round(a/b*100):0;}
+function renderStat(){
+  var box=document.getElementById('stat'),start=firstUse();
+  if(!start){box.innerHTML='<div class="bars"><b>Пока нет отметок</b><p class="lead">Отмечайте кружками в режиме «По дням» — здесь появится, как вы справляетесь с планом: проценты по неделям, по видам нагрузки и календарь.</p></div>';return;}
+  var today=new Date(now.getFullYear(),now.getMonth(),now.getDate()),days=[],d=new Date(today);
+  for(var i=0;i<56;i++){var x=new Date(today);x.setDate(today.getDate()-i);if(iso(x)<start)break;days.push(x);}
+  days.reverse();
+  if(!days.length){box.innerHTML='<div class="bars"><b>Пока нет отметок за прошедшие дни</b><p class="lead">Статистика считает дни до сегодняшнего включительно.</p></div>';return;}
+  var stats=days.map(function(x){return {d:x,s:dayStat(x)};});
+  var weeks={},cats={},streak=0;
+  stats.forEach(function(o){
+    var mon=new Date(o.d);mon.setDate(o.d.getDate()-((o.d.getDay()+6)%7));var wk=iso(mon);
+    weeks[wk]=weeks[wk]||[0,0,mon];weeks[wk][0]+=o.s.dn;weeks[wk][1]+=o.s.tot;
+    Object.keys(o.s.by).forEach(function(c){cats[c]=cats[c]||[0,0];cats[c][0]+=o.s.by[c][0];cats[c][1]+=o.s.by[c][1];});
+  });
+  for(var j=stats.length-1;j>=0;j--){var p=pct(stats[j].s.dn,stats[j].s.tot);if(p>=50)streak++;else if(!(j===stats.length-1))break;}
+  var wkeys=Object.keys(weeks).sort(),cur=weeks[wkeys[wkeys.length-1]],prev=wkeys.length>1?weeks[wkeys[wkeys.length-2]]:null;
+  var allD=0,allT=0;stats.forEach(function(o){allD+=o.s.dn;allT+=o.s.tot;});
+  var s='<div class="kpis"><div class="kpi"><b>'+pct(cur[0],cur[1])+'%</b><span>эта неделя'+(prev?' · было '+pct(prev[0],prev[1])+'%':'')+'</span></div>'+
+    '<div class="kpi"><b>'+streak+'</b><span>дней подряд от 50%</span></div>'+
+    '<div class="kpi"><b>'+pct(allD,allT)+'%</b><span>за всё время · '+stats.length+' дн.</span></div></div>';
+  s+='<h2>По неделям</h2><div class="bars">'+wkeys.slice(-8).map(function(k){var w=weeks[k],p=pct(w[0],w[1]);return '<div class="bar"><span>с '+w[2].getDate()+'.'+(w[2].getMonth()+1)+'</span><span class="tr"><i style="width:'+p+'%"></i></span><span class="v">'+p+'%</span></div>';}).join('')+'</div>';
+  s+='<h2>По видам нагрузки</h2><div class="bars">'+Object.keys(cats).sort(function(a,b){return pct(cats[b][0],cats[b][1])-pct(cats[a][0],cats[a][1]);}).map(function(c){var v=cats[c],p=pct(v[0],v[1]);return '<div class="bar" style="grid-template-columns:150px 1fr 44px"><span>'+esc(c)+'</span><span class="tr"><i style="width:'+p+'%"></i></span><span class="v">'+p+'%</span></div>';}).join('')+'</div>';
+  var last=stats.slice(-28),pad=(last[0].d.getDay()+6)%7;
+  s+='<h2>Календарь</h2><div class="cal">'+['Пн','Вт','Ср','Чт','Пт','Сб','Вс'].map(function(x){return '<span class="h">'+x+'</span>';}).join('')+
+    new Array(pad+1).join('<span class="h"></span>')+
+    last.map(function(o){var p=pct(o.s.dn,o.s.tot);return '<span title="'+p+'%" style="background:color-mix(in srgb, var(--accent) '+Math.max(8,p)+'%, var(--line))">'+o.d.getDate()+'</span>';}).join('')+'</div>';
+  s+='<p class="lead" style="font-size:13px">Чем темнее клетка, тем больше сделано в этот день. Считается по отметкам на этом телефоне. Еженедельный отчёт Claude — кнопкой в режиме «По дням».</p>';
+  box.innerHTML=s;
+}
+function setView(v){
+  if(v===true)v='all';if(v===false)v='day';
+  document.getElementById('dayview').hidden=v!=='day';document.getElementById('allview').hidden=v!=='all';document.getElementById('statview').hidden=v!=='stat';
+  weekEl.hidden=v!=='day';document.getElementById('wakebox').hidden=v!=='day';
+  ['day','all','stat'].forEach(function(x){document.getElementById('v-'+x).setAttribute('aria-pressed',String(x===v));});
+  document.getElementById('subtitle').textContent=v==='all'?'Все упражнения и замены на занятиях · нажмите, чтобы раскрыть':v==='stat'?'Как я справляюсь с планом':'План дня по часам · нажмите пункт, чтобы увидеть упражнения';
+  if(v==='all')renderCat();if(v==='stat')renderStat();
+  set('tr-view',v);window.scrollTo({top:0});
+}
+document.getElementById('v-day').addEventListener('click',function(){setView('day');});
+document.getElementById('v-all').addEventListener('click',function(){setView('all');});
+document.getElementById('v-stat').addEventListener('click',function(){setView('stat');});
+
+// ---------- add activity ----------
+var addSel=document.getElementById('addkind');
+addSel.innerHTML=Object.keys(ACT).map(function(k){return '<option value="'+k+'">'+esc(ACT[k].n)+'</option>';}).join('');
+addSel.value='recovery';
+document.getElementById('addbtn').addEventListener('click',function(){
+  var tv=(document.getElementById('addtime').value||'18:00').split(':'),m=(+tv[0])*60+(+tv[1]||0);
+  var k=iso(dateOf(sel)),xs=extras(k);xs.push({k:addSel.value,m:m});set('tr-extra-'+k,JSON.stringify(xs));
+  render();
+  document.getElementById('addstatus').textContent='Добавлено: '+ACT[addSel.value].n+', '+DN[sel].toLowerCase()+' '+hm(m)+'.';
+});
 
 // ---------- weekly report to Telegram ----------
 function report(){
   var lines=['#катя тренировки','Неделя с '+dateOf(1).getDate()+'.'+(dateOf(1).getMonth()+1)+', отправлено '+now.getDate()+'.'+(now.getMonth()+1),''],tot=0,dn=0;
   for(var i=0;i<ORDER.length;i++){
     var dow=ORDER[i],d=dateOf(dow);if(d>now&&dow!==todayDow)break;
-    var key=iso(d),choice=get('tr-choice-'+dow,CHOICE[dow]?CHOICE[dow][0].id:''),items=plan(dow,wakeMin(),choice);
+    var key=iso(d),items=dayItems(dow);
     var yes=[],no=[];
     items.forEach(function(it){
-      if(it.kind==='rest')return;
+      if(it.kind==='rest'&&it.extra===undefined)return;
       var id=key+'-'+it.m+'-'+it.title.replace(/\s+/g,'');
       (get('tr-done-'+id,'')==='1'?yes:no).push(it.title);
     });
@@ -700,7 +822,7 @@ document.getElementById('copy').addEventListener('click',function(){
 
 render();
 if(io)[].forEach.call(document.querySelectorAll('svg.fig'),function(s){s.__obs=1;io.observe(s);});
-if(get('tr-view','day')==='all')setView(true);
+(function(){var v=get('tr-view','day');if(v==='all'||v==='stat')setView(v);})();
 requestAnimationFrame(tick);
 })();
 </script>
