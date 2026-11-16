@@ -147,6 +147,10 @@ html,body{margin:0}
 .cal .h{background:none;color:var(--muted);aspect-ratio:auto}
 .delx{justify-self:start;appearance:none;background:none;border:1px solid var(--line);color:var(--muted);border-radius:999px;padding:5px 12px;font:500 13px var(--body);cursor:pointer}
 .cat h2{font:600 17px/1.2 var(--display);margin:10px 2px 0}
+.weeknav{display:flex;align-items:center;justify-content:space-between;gap:8px;margin-top:8px}
+.weeknav button{appearance:none;background:var(--surface);border:1px solid var(--line);color:var(--ink);border-radius:999px;padding:6px 14px;font:500 13px var(--body);cursor:pointer}
+.weeknav button:disabled{opacity:.35;cursor:default}
+.weeknav #wlabel{font:600 13.5px var(--body);color:var(--muted);text-align:center;flex:1}
 </style>
 </head><body>
 
@@ -158,6 +162,7 @@ html,body{margin:0}
     </div>
     <div class="views" role="group" aria-label="Режим" style="grid-template-columns:repeat(4,auto)"><button type="button" id="v-day" aria-pressed="true">По дням</button><button type="button" id="v-all" aria-pressed="false">Упражнения</button><button type="button" id="v-tch" aria-pressed="false">Занятия</button><button type="button" id="v-stat" aria-pressed="false">Статистика</button></div>
     <nav class="week" id="week" aria-label="День недели"></nav>
+    <div class="weeknav"><button type="button" id="wprev" aria-label="Прошлая неделя">‹ назад</button><span id="wlabel"></span><button type="button" id="wnext" aria-label="Следующая неделя">вперёд ›</button></div>
     <div class="rules" aria-label="Правила на каждый день">
       <span class="rule">Боль не выше 2 из 10</span>
       <span class="rule">Живот без «гребня» посередине</span>
@@ -185,7 +190,7 @@ html,body{margin:0}
 
   <div class="send">
     <b>Отчёт за неделю</b>
-    <p>Соберёт, что сделано и что нет с понедельника по сегодня, и откроет чат с помощником в Telegram. Там нажмите «Отправить».</p>
+    <p>Собирает, что сделано и что нет, за ту неделю, которая открыта сверху. Можно вернуться к прошлой неделе и отправить отчёт за неё. Откроется чат с помощником в Telegram — там нажмите «Отправить».</p>
     <div class="row"><button type="button" id="send">Отправить Claude</button><button type="button" class="ghost" id="copy">Скопировать текст</button></div>
     <p id="sstatus" role="status"></p>
   </div>
@@ -201,6 +206,19 @@ html,body{margin:0}
 
   <section id="statview" hidden>
     <div class="cat" id="stat"></div>
+    <div class="cat">
+      <h2>История тренировок</h2>
+      <div class="bars" style="display:grid;gap:10px">
+        <p style="margin:0;font-size:13.5px;color:var(--muted)">История хранится в файле на компьютере — ничего не потеряется. Выберите папку один раз.</p>
+        <div class="row" style="display:flex;gap:8px;flex-wrap:wrap">
+          <button type="button" id="th-pick">Выбрать папку для истории</button>
+          <button type="button" class="ghost" id="th-save" hidden>Записать сейчас</button>
+          <span class="muted" id="th-msg" role="status" style="font-size:13px;align-self:center"></span>
+        </div>
+        <p id="th-status" style="margin:0;font-size:13px;color:var(--muted)"></p>
+      </div>
+      <div id="th-list"></div>
+    </div>
   </section>
 
   <div class="foot">
@@ -722,8 +740,11 @@ var DN=['Воскресенье','Понедельник','Вторник','Ср
 var DS=['Вс','Пн','Вт','Ср','Чт','Пт','Сб'];
 var ORDER=[1,2,3,4,5,6,0];
 var now=new Date(),todayDow=now.getDay();
-var monday=new Date(now.getFullYear(),now.getMonth(),now.getDate()-((todayDow+6)%7));
-function dateOf(dow){var d=new Date(monday);d.setDate(monday.getDate()+((dow+6)%7));return d;}
+var baseMonday=new Date(now.getFullYear(),now.getMonth(),now.getDate()-((todayDow+6)%7));
+var weekOffset=0;   // 0 — текущая неделя, -1 — прошлая, +1 — следующая
+function mondayOf(off){var d=new Date(baseMonday);d.setDate(baseMonday.getDate()+off*7);return d;}
+function monday(){return mondayOf(weekOffset);}
+function dateOf(dow){var d=monday();d.setDate(monday().getDate()+((dow+6)%7));return d;}
 function iso(d){return d.getFullYear()+'-'+('0'+(d.getMonth()+1)).slice(-2)+'-'+('0'+d.getDate()).slice(-2);}
 var sel=todayDow;
 var h=(location.hash||'').slice(1);var hmap={mon:1,tue:2,wed:3,thu:4,fri:5,sat:6,sun:0};
@@ -734,13 +755,24 @@ function wakeMin(){var p=(wakeEl.value||'07:30').split(':');return (+p[0])*60+(+
 wakeEl.addEventListener('change',function(){set('tr-wake',wakeEl.value);render();});
 
 var weekEl=document.getElementById('week');
-ORDER.forEach(function(dow){
-  var b=document.createElement('button');b.type='button';b.dataset.dow=dow;
-  b.innerHTML=DS[dow]+'<small>'+dateOf(dow).getDate()+'</small>';
-  if(dow===todayDow)b.classList.add('today');
-  b.addEventListener('click',function(){sel=dow;render();window.scrollTo({top:0});});
-  weekEl.appendChild(b);
-});
+function buildWeek(){
+  weekEl.innerHTML='';
+  ORDER.forEach(function(dow){
+    var b=document.createElement('button');b.type='button';b.dataset.dow=dow;
+    b.innerHTML=DS[dow]+'<small>'+dateOf(dow).getDate()+'</small>';
+    if(dow===todayDow&&weekOffset===0)b.classList.add('today');
+    b.addEventListener('click',function(){sel=dow;render();window.scrollTo({top:0});});
+    weekEl.appendChild(b);
+  });
+  var m=monday(),sun=new Date(m);sun.setDate(m.getDate()+6);
+  var MN=['января','февраля','марта','апреля','мая','июня','июля','августа','сентября','октября','ноября','декабря'];
+  var lbl=m.getDate()+' '+MN[m.getMonth()]+' — '+sun.getDate()+' '+MN[sun.getMonth()];
+  document.getElementById('wlabel').textContent=weekOffset===0?'эта неделя · '+lbl:lbl;
+  document.getElementById('wnext').disabled=weekOffset>=0;
+}
+document.getElementById('wprev').addEventListener('click',function(){weekOffset--;buildWeek();render();if(document.getElementById('statview')&&!document.getElementById('statview').hidden)renderStat();});
+document.getElementById('wnext').addEventListener('click',function(){if(weekOffset<0){weekOffset++;buildWeek();render();if(document.getElementById('statview')&&!document.getElementById('statview').hidden)renderStat();}});
+buildWeek();
 
 function esc(s){return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;');}
 var CHEV='<svg class="chev" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m6 9 6 6 6-6"/></svg>';
@@ -771,7 +803,7 @@ function classHTML(c){
 function render(){
   [].forEach.call(weekEl.children,function(b){b.setAttribute('aria-pressed',String(+b.dataset.dow===sel));});
   var d=dateOf(sel),key=iso(d);
-  document.getElementById('dayname').textContent=DN[sel]+(sel===todayDow?', сегодня':'');
+  document.getElementById('dayname').textContent=DN[sel]+(sel===todayDow&&weekOffset===0?', сегодня':'');
   var choice=get('tr-choice-'+sel,CHOICE[sel]?CHOICE[sel][0].id:'');
   var items=dayItems(sel);
   var tl=document.getElementById('tl');uid=0;
@@ -816,6 +848,7 @@ document.getElementById('tl').addEventListener('change',function(e){
   var all=document.querySelectorAll('#tl .check'),n=0;[].forEach.call(all,function(c){if(c.checked)n++;});
   var dc=document.getElementById('daycount');dc.textContent=dc.textContent.replace(/сделано \d+/,'сделано '+n);
   document.getElementById('bar').style.width=(n/all.length*100)+'%';
+  histSync();
 });
 
 // ---------- animation ----------
@@ -932,13 +965,126 @@ function renderStat(){
   s+='<p class="lead" style="font-size:13px">Чем темнее клетка, тем больше сделано в этот день. Считается по отметкам на этом телефоне. Еженедельный отчёт Claude — кнопкой в режиме «По дням».</p>';
   box.innerHTML=s;
 }
+// ---------- история тренировок и запись в файл ----------
+var HIST_DIR=null, HIST_NAME='';
+function allHistDays(){
+  var start=firstUse();if(!start)return [];
+  var today=new Date(now.getFullYear(),now.getMonth(),now.getDate()),out=[],d=new Date(today);
+  for(var i=0;i<400;i++){var x=new Date(today);x.setDate(today.getDate()-i);if(iso(x)<start)break;out.push(x);}
+  return out.reverse();
+}
+function histRows(){
+  return allHistDays().map(function(x){
+    var st=dayStat(x),dow=x.getDay();
+    return {date:iso(x),dow:DS[dow],done:st.dn,total:st.tot,pct:pct(st.dn,st.tot)};
+  });
+}
+function weeksOf(){
+  var rows=histRows(),wk={};
+  rows.forEach(function(r){
+    var d=new Date(r.date+'T00:00:00');
+    var mon=new Date(d);mon.setDate(d.getDate()-((d.getDay()+6)%7));
+    var k=iso(mon);wk[k]=wk[k]||{start:mon,days:[],done:0,total:0};
+    wk[k].days.push(r);wk[k].done+=r.done;wk[k].total+=r.total;
+  });
+  return Object.keys(wk).sort().reverse().map(function(k){var w=wk[k];w.key=k;w.pct=pct(w.done,w.total);return w;});
+}
+function offsetOfWeek(key){
+  var mon=new Date(key+'T00:00:00');
+  return Math.round((mon.getTime()-baseMonday.getTime())/(7*864e5));
+}
+function reportForOffset(off){
+  var keep=weekOffset;weekOffset=off;
+  try{return report();}finally{weekOffset=keep;}
+}
+function renderHistory(){
+  var box=document.getElementById('th-list');if(!box)return;
+  var ws=weeksOf();
+  if(!ws.length){box.innerHTML='<div class="bars"><b>Пока пусто</b><p class="lead">Отметьте выполненные пункты в режиме «По дням» — здесь появятся недели с процентами и кнопкой отчёта.</p></div>';return}
+  box.innerHTML='<h2>По неделям · отчёт</h2><div class="bars" style="gap:10px">'+ws.map(function(w){
+    var s=new Date(w.start),e=new Date(s);e.setDate(s.getDate()+6);
+    var lbl=s.getDate()+' '+MN_FULL[s.getMonth()]+' — '+e.getDate()+' '+MN_FULL[e.getMonth()];
+    var isCur=w.key===iso(baseMonday);
+    return '<div style="display:grid;gap:6px;padding-bottom:10px;border-bottom:1px solid var(--line)">'+
+      '<div style="display:flex;justify-content:space-between;gap:8px;align-items:baseline;flex-wrap:wrap">'+
+        '<b style="font-size:13.5px">'+lbl+(isCur?' · эта неделя':'')+'</b>'+
+        '<span class="muted" style="font-size:13px">'+w.done+' из '+w.total+' · '+w.pct+'%</span></div>'+
+      '<div class="row" style="display:flex;gap:8px;flex-wrap:wrap">'+
+        '<button type="button" class="ghost" data-week="'+w.key+'">Открыть дни</button>'+
+        '<button type="button" class="ghost" data-report="'+w.key+'">Отчёт за эту неделю</button>'+
+      '</div></div>';
+  }).join('')+'</div>';
+  [].forEach.call(box.querySelectorAll('[data-week]'),function(b){
+    b.addEventListener('click',function(){
+      weekOffset=offsetOfWeek(b.dataset.week);buildWeek();setView('day');
+    });
+  });
+  [].forEach.call(box.querySelectorAll('[data-report]'),function(b){
+    b.addEventListener('click',function(){
+      var txt=reportForOffset(offsetOfWeek(b.dataset.report));
+      try{navigator.clipboard.writeText(txt).catch(function(){});}catch(e){}
+      location.href='https://t.me/HelpKattyBot?text='+encodeURIComponent(txt);
+    });
+  });
+}
+function histCSV(){
+  var head='Дата;День недели;Сделано;Всего;Процент';
+  var body=histRows().map(function(r){return r.date+';'+r.dow+';'+r.done+';'+r.total+';'+r.pct}).join('\n');
+  return head+'\n'+body+'\n';
+}
+function histJSON(){
+  return JSON.stringify({saved:new Date().toISOString(),weeks:weeksOf().map(function(w){
+    return {week:w.key,done:w.done,total:w.total,pct:w.pct,days:w.days};
+  })},null,1);
+}
+async function histWrite(name,text){
+  if(!HIST_DIR)return false;
+  try{var fh=await HIST_DIR.getFileHandle(name,{create:true});var w=await fh.createWritable();await w.write(text);await w.close();return true}
+  catch(e){return false}
+}
+function thStatus(txt,kind){
+  var el=document.getElementById('th-status');if(!el)return;
+  el.textContent=txt;el.style.color=kind==='good'?'var(--good)':kind==='warn'?'var(--warn)':'var(--muted)';
+}
+async function histSync(){
+  if(!HIST_DIR){thStatus('Файл не выбран — история пока в браузере. Нажмите «Выбрать папку для истории».','warn');return false}
+  var a=await histWrite('Тренировки история.csv',histCSV());
+  var b=await histWrite('Тренировки история.json',histJSON());
+  if(a&&b){thStatus('История пишется в папку «'+HIST_NAME+'»: «Тренировки история.csv» (для Excel) и «Тренировки история.json».','good');return true}
+  thStatus('Не удалось записать файл. Проверьте папку и нажмите «Записать сейчас».','warn');return false;
+}
+document.getElementById('th-pick').addEventListener('click',async function(){
+  var msg=document.getElementById('th-msg');
+  if(!window.showDirectoryPicker){thStatus('Этот браузер не умеет писать в файл. История останется в браузере.','warn');return}
+  try{
+    HIST_DIR=await window.showDirectoryPicker({id:'trainings',mode:'readwrite'});
+    HIST_NAME=HIST_DIR.name;
+    try{localStorage.setItem('tr-histdir',HIST_NAME)}catch(e){}
+    document.getElementById('th-save').hidden=false;
+    var ok=await histSync();
+    if(msg)msg.textContent=ok?'Папка выбрана. Дальше всё пишется само.':'Папка выбрана, но запись не прошла.';
+  }catch(e){
+    if(e&&e.name==='AbortError')return;
+    thStatus('Папку выбрать не удалось. Попробуйте ещё раз.','warn');
+  }
+});
+document.getElementById('th-save').addEventListener('click',async function(){
+  var msg=document.getElementById('th-msg');var ok=await histSync();if(msg)msg.textContent=ok?'Записано.':'Не получилось.';
+});
+(function(){
+  var saved='';try{saved=localStorage.getItem('tr-histdir')||''}catch(e){}
+  if(saved)thStatus('Папка «'+saved+'» выбиралась раньше. Нажмите «Выбрать папку для истории», чтобы возобновить запись.','');
+  else if(window.showDirectoryPicker)thStatus('Выберите папку один раз — история будет сохраняться в файл.','');
+})();
+
 function setView(v){
   if(v===true)v='all';if(v===false)v='day';
   document.getElementById('dayview').hidden=v!=='day';document.getElementById('allview').hidden=v!=='all';document.getElementById('statview').hidden=v!=='stat';document.getElementById('tchview').hidden=v!=='tch';
   weekEl.hidden=v!=='day';document.getElementById('wakebox').hidden=v!=='day';
   ['day','all','tch','stat'].forEach(function(x){document.getElementById('v-'+x).setAttribute('aria-pressed',String(x===v));});
   document.getElementById('subtitle').textContent=v==='all'?'Домашние комплексы · нажмите, чтобы раскрыть':v==='tch'?'Комплексы преподавателей по видам занятий':v==='stat'?'Как я справляюсь с планом':'План дня по часам · нажмите пункт, чтобы увидеть упражнения';
-  if(v==='all')renderCat();if(v==='tch')renderTch();if(v==='stat')renderStat();
+  var wn=document.querySelector('.weeknav');if(wn)wn.hidden=v!=='day';
+  if(v==='all')renderCat();if(v==='tch')renderTch();if(v==='stat'){renderStat();renderHistory();}
   set('tr-view',v);window.scrollTo({top:0});
 }
 document.getElementById('v-day').addEventListener('click',function(){setView('day');});
@@ -958,11 +1104,19 @@ document.getElementById('addbtn').addEventListener('click',function(){
 });
 
 // ---------- weekly report to Telegram ----------
+var MN_FULL=['января','февраля','марта','апреля','мая','июня','июля','августа','сентября','октября','ноября','декабря'];
+function weekRangeLabel(){
+  var m=monday(),s=new Date(m);s.setDate(m.getDate()+6);
+  return m.getDate()+' '+MN_FULL[m.getMonth()]+' — '+s.getDate()+' '+MN_FULL[s.getMonth()];
+}
 function report(){
-  var lines=['#катя тренировки','Неделя с '+dateOf(1).getDate()+'.'+(dateOf(1).getMonth()+1)+', отправлено '+now.getDate()+'.'+(now.getMonth()+1),''],tot=0,dn=0;
+  var lines=['#катя тренировки','Неделя '+weekRangeLabel(),''],tot=0,dn=0;
+  var isCur=weekOffset===0;
   for(var i=0;i<ORDER.length;i++){
-    var dow=ORDER[i],d=dateOf(dow);if(d>now&&dow!==todayDow)break;
-    var key=iso(d),items=dayItems(dow);
+    var dow=ORDER[i],d=dateOf(dow);
+    // в текущей неделе — только прошедшие дни, в прошлых — все семь
+    if(isCur&&d>now&&dow!==todayDow)break;
+    var key=iso(d),items=itemsFor(d);
     var yes=[],no=[];
     items.forEach(function(it){
       if(it.kind==='rest'&&it.extra===undefined)return;
@@ -973,7 +1127,7 @@ function report(){
     lines.push(DS[dow]+' '+d.getDate()+'.'+(d.getMonth()+1)+': '+yes.length+' из '+(yes.length+no.length));
     if(yes.length)lines.push('  ✓ '+yes.join('; '));
     if(no.length)lines.push('  ✗ '+no.join('; '));
-    if(dow===todayDow)break;
+    if(isCur&&dow===todayDow)break;
   }
   lines.splice(2,0,'Итого сделано: '+dn+' из '+tot);
   return lines.join('\n');
